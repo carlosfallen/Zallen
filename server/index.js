@@ -15,7 +15,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
-        origin: process.env.VITE_API_URL || 'http://localhost:5173',
+        origin: process.env.VITE_API_URL || 'http://145.223.30.23:5173',
         methods: ['GET', 'POST'],
     },
 });
@@ -352,12 +352,12 @@ io.on('connection', (socket) => {
 
 // ==================== START SERVER ====================
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5173;
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Zapper Monitor Server`);
-    console.log(`📡 API: http://localhost:${PORT}`);
-    console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
+    console.log(`📡 API: http://145.223.30.23:${PORT}`);
+    console.log(`🔌 WebSocket: ws://145.223.30.23:${PORT}`);
     console.log(`\n✅ Server is running!\n`);
 });
 

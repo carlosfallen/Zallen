@@ -1,26 +1,92 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, QrCode as QrCodeIcon } from 'lucide-react';
+import { io, Socket } from 'socket.io-client';
 
 interface QRCodeModalProps {
     onClose: () => void;
 }
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://145.223.30.23:3512';
+
 export default function QRCodeModal({ onClose }: QRCodeModalProps) {
     const [vendorName, setVendorName] = useState('');
+    const [vendorPhone, setVendorPhone] = useState('');
+    const [vendorEmail, setVendorEmail] = useState('');
+    const [vendorId, setVendorId] = useState('');
     const [qrCode, setQrCode] = useState('');
     const [status, setStatus] = useState<'input' | 'generating' | 'scanning' | 'connected'>('input');
+    const [socket, setSocket] = useState<Socket | null>(null);
 
-    const handleGenerate = () => {
+    useEffect(() => {
+        // Conecta ao WebSocket
+        const newSocket = io(API_URL);
+        setSocket(newSocket);
+
+        return () => {
+            newSocket.close();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!socket || !vendorId) return;
+
+        // Escuta QR Code para este vendor
+        socket.on(`qr-${vendorId}`, (data: { qr: string }) => {
+            console.log('[QRCodeModal] QR Code recebido:', data.qr.substring(0, 50));
+            setQrCode(data.qr);
+            setStatus('scanning');
+        });
+
+        // Escuta status de conexão
+        socket.on(`status-${vendorId}`, (data: { status: string }) => {
+            console.log('[QRCodeModal] Status atualizado:', data.status);
+            if (data.status === 'online') {
+                setStatus('connected');
+                setTimeout(() => {
+                    onClose();
+                }, 2000);
+            }
+        });
+
+        return () => {
+            socket.off(`qr-${vendorId}`);
+            socket.off(`status-${vendorId}`);
+        };
+    }, [socket, vendorId, onClose]);
+
+    const handleGenerate = async () => {
         if (!vendorName.trim()) return;
 
         setStatus('generating');
 
-        // TODO: Call API to generate QR Code
-        setTimeout(() => {
-            // Simula QR Code gerado
-            setQrCode('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
-            setStatus('scanning');
-        }, 1000);
+        try {
+            // Chama API para criar vendor
+            const response = await fetch(`${API_URL}/api/vendors`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: vendorName,
+                    phone: vendorPhone || null,
+                    email: vendorEmail || null,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Erro ao criar vendor');
+            }
+
+            const data = await response.json();
+            console.log('[QRCodeModal] Vendor criado:', data);
+            setVendorId(data.id);
+
+            // O QR Code será recebido via WebSocket
+        } catch (error) {
+            console.error('[QRCodeModal] Erro:', error);
+            alert('Erro ao criar vendedor. Tente novamente.');
+            setStatus('input');
+        }
     };
 
     return (
@@ -39,16 +105,39 @@ export default function QRCodeModal({ onClose }: QRCodeModalProps) {
                 {status === 'input' && (
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Nome do Vendedor
+                            Nome do Vendedor *
                         </label>
                         <input
                             type="text"
                             value={vendorName}
                             onChange={(e) => setVendorName(e.target.value)}
                             placeholder="Ex: João Silva"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent mb-4"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent mb-3"
                             autoFocus
                         />
+
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Telefone (opcional)
+                        </label>
+                        <input
+                            type="text"
+                            value={vendorPhone}
+                            onChange={(e) => setVendorPhone(e.target.value)}
+                            placeholder="Ex: 5511999999999"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent mb-3"
+                        />
+
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Email (opcional)
+                        </label>
+                        <input
+                            type="email"
+                            value={vendorEmail}
+                            onChange={(e) => setVendorEmail(e.target.value)}
+                            placeholder="Ex: joao@empresa.com"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent mb-4"
+                        />
+
                         <button
                             onClick={handleGenerate}
                             disabled={!vendorName.trim()}

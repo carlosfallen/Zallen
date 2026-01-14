@@ -7,7 +7,7 @@ class WebSocketClient {
     connect() {
         if (this.socket?.connected) return;
 
-        const wsUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
+        const wsUrl = import.meta.env.VITE_WS_URL || 'http://145.223.30.23:3000';
 
         this.socket = io(wsUrl, {
             transports: ['websocket', 'polling'],

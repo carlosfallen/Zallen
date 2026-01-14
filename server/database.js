@@ -1,36 +1,117 @@
 import dotenv from 'dotenv';
+import Database from 'better-sqlite3';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
 dotenv.config();
 
-class Database {
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+class DatabaseManager {
     constructor() {
         this.accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
         this.databaseId = process.env.CLOUDFLARE_DATABASE_ID;
         this.apiToken = process.env.CLOUDFLARE_API_TOKEN;
         this.baseUrl = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/d1/database/${this.databaseId}`;
+
+        // Flags de controle
+        this.useCloudflare = !!(this.accountId && this.databaseId && this.apiToken);
+        this.localDb = null;
+        this.initialized = false;
+
+        if (this.useCloudflare) {
+            console.log('🌐 [Database] Configurado para usar Cloudflare D1');
+        } else {
+            console.log('💾 [Database] Credenciais do Cloudflare não encontradas, usando SQLite local');
+            this._initLocalDb();
+        }
+    }
+
+    _initLocalDb() {
+        try {
+            const dbPath = join(__dirname, 'database.sqlite');
+            this.localDb = new Database(dbPath);
+            console.log(`💾 [Database] SQLite local inicializado: ${dbPath}`);
+        } catch (error) {
+            console.error('❌ [Database] Erro ao inicializar SQLite local:', error);
+            throw error;
+        }
     }
 
     async query(sql, params = []) {
-        try {
-            const response = await fetch(`${this.baseUrl}/query`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.apiToken}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ sql, params }),
-            });
+        // Se está usando Cloudflare D1
+        if (this.useCloudflare && !this.localDb) {
+            try {
+                const response = await fetch(`${this.baseUrl}/query`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.apiToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ sql, params }),
+                });
 
-            const data = await response.json();
+                const data = await response.json();
 
-            if (!data.success) {
-                throw new Error(data.errors?.[0]?.message || 'Database query failed');
+                if (!data.success) {
+                    const errorMsg = data.errors?.[0]?.message || 'Database query failed';
+
+                    // Se erro de tabela não existente, tenta fallback
+                    if (errorMsg.includes('no such table') || errorMsg.includes('SQLITE_ERROR')) {
+                        console.warn('⚠️  [Database] Cloudflare D1 não inicializado. Execute: npm run init-d1');
+                        console.warn('⚠️  [Database] Alternando para SQLite local como fallback...');
+                        this._initLocalDb();
+                        return this.query(sql, params); // Retry com SQLite local
+                    }
+
+                    throw new Error(errorMsg);
+                }
+
+                return data.result[0];
+            } catch (error) {
+                // Se erro de rede ou API, usa fallback
+                if (error.message.includes('fetch') || error.message.includes('network')) {
+                    console.warn('⚠️  [Database] Erro de conexão com Cloudflare D1, usando SQLite local');
+                    if (!this.localDb) {
+                        this._initLocalDb();
+                    }
+                    return this.query(sql, params); // Retry com SQLite local
+                }
+
+                console.error('[Database] Query error:', error);
+                throw error;
             }
-
-            return data.result[0];
-        } catch (error) {
-            console.error('[Database] Query error:', error);
-            throw error;
         }
+
+        // Usa SQLite local
+        if (this.localDb) {
+            try {
+                // Determina se é SELECT ou outro tipo de query
+                const isSelect = sql.trim().toUpperCase().startsWith('SELECT');
+
+                if (isSelect) {
+                    const stmt = this.localDb.prepare(sql);
+                    const results = stmt.all(...params);
+                    return { results };
+                } else {
+                    const stmt = this.localDb.prepare(sql);
+                    const info = stmt.run(...params);
+                    return {
+                        results: [],
+                        meta: {
+                            changes: info.changes,
+                            last_row_id: info.lastInsertRowid
+                        }
+                    };
+                }
+            } catch (error) {
+                console.error('[Database] SQLite query error:', error);
+                throw error;
+            }
+        }
+
+        throw new Error('No database available');
     }
 
     // ==================== VENDORS ====================
@@ -218,4 +299,4 @@ class Database {
     }
 }
 
-export default Database;
+export default DatabaseManager;

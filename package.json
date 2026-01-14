@@ -4,11 +4,13 @@
   "description": "Plataforma de monitoramento WhatsApp multi-tenant",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "server": "node server/index.js",
-    "server:dev": "nodemon server/index.js"
+    "server:dev": "nodemon server/index.js",
+    "init-d1": "node server/init-d1.js",
+    "init-local": "node server/init-db.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
