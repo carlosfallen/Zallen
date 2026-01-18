@@ -277,3 +277,4 @@ Desenvolvido com ❤️ para monitoramento profissional de WhatsApp
 ---
 
 **🚀 Pronto para começar? Execute `npm run server` e `npm run dev`!**
+"# zapmonitor" 
